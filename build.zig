@@ -16,11 +16,11 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/lib.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         }),
     });
     lib.bundle_compiler_rt = true;
-    lib.addIncludePath(b.path("src"));
-    lib.linkLibC();
+    lib.root_module.addIncludePath(b.path("src"));
     lib.installHeader(b.path("src/ini.h"), "ini.h");
     b.installArtifact(lib);
 
@@ -30,9 +30,10 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .optimize = optimize,
             .target = target,
+            .link_libc = true,
         }),
     });
-    example_c.addCSourceFile(.{
+    example_c.root_module.addCSourceFile(.{
         .file = b.path("example/example.c"),
         .flags = &.{
             "-Wall",
@@ -40,9 +41,8 @@ pub fn build(b: *std.Build) void {
             "-pedantic",
         },
     });
-    example_c.addIncludePath(b.path("src"));
-    example_c.linkLibrary(lib);
-    example_c.linkLibC();
+    example_c.root_module.addIncludePath(b.path("src"));
+    example_c.root_module.linkLibrary(lib);
     example_step.dependOn(&b.addInstallArtifact(example_c, .{}).step);
 
     const example_zig = b.addExecutable(.{
@@ -51,9 +51,11 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("example/example.zig"),
             .optimize = optimize,
             .target = target,
+            .imports = &.{
+                .{ .name = "ini", .module = b.modules.get("ini").? },
+            },
         }),
     });
-    example_zig.root_module.addImport("ini", b.modules.get("ini").?);
     example_step.dependOn(&b.addInstallArtifact(example_zig, .{}).step);
 
     const test_step = b.step("test", "Run library tests");
@@ -71,10 +73,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/lib-test.zig"),
             .optimize = optimize,
             .target = target,
+            .link_libc = true,
         }),
     });
-    binding_tests.addIncludePath(b.path("src"));
-    binding_tests.linkLibrary(lib);
-    binding_tests.linkLibC();
+    binding_tests.root_module.addIncludePath(b.path("src"));
+    binding_tests.root_module.linkLibrary(lib);
     test_step.dependOn(&b.addRunArtifact(binding_tests).step);
 }

@@ -38,23 +38,26 @@ pub const Parser = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    line_buffer: std.array_list.Managed(u8),
-    reader: *std.io.Reader,
+    line_buffer: std.ArrayList(u8),
+    reader: *std.Io.Reader,
     comment_characters: []const u8,
 
     pub fn deinit(self: *Self) void {
-        self.line_buffer.deinit();
+        self.line_buffer.deinit(self.allocator);
         self.* = undefined;
     }
 
     pub fn next(self: *Self) !?Record {
-        var write_buffer: [1024]u8 = undefined;
-        var old_writer_adapter = self.line_buffer.writer().adaptToNewApi(&write_buffer);
-        var writer = &old_writer_adapter.new_interface;
         self.line_buffer.clearRetainingCapacity();
         while (true) {
-            _ = try self.reader.streamDelimiterLimit(writer, '\n', .limited(4096));
-            try writer.flush();
+            {
+                var list_writer = std.Io.Writer.Allocating.fromArrayList(self.allocator, &self.line_buffer);
+                defer self.line_buffer = list_writer.toArrayList();
+
+                _ = try self.reader.streamDelimiterLimit(&list_writer.writer, '\n', .limited(4096));
+                try list_writer.writer.flush();
+            }
+
             const discarded = self.reader.discard(.limited(1)) catch |e| blk: {
                 switch (e) {
                     error.EndOfStream => {
@@ -67,7 +70,7 @@ pub const Parser = struct {
             };
             if (self.line_buffer.items.len == 0 and discarded == 0)
                 return null;
-            try self.line_buffer.append(0); // append guaranteed space for sentinel
+            try self.line_buffer.append(self.allocator, 0); // append guaranteed space for sentinel
 
             var line: []const u8 = self.line_buffer.items;
             var last_index: usize = 0;
@@ -122,10 +125,10 @@ pub const Parser = struct {
 };
 
 /// Returns a new parser that can read the ini structure
-pub fn parse(allocator: std.mem.Allocator, reader: *std.io.Reader, comment_characters: []const u8) Parser {
+pub fn parse(allocator: std.mem.Allocator, reader: *std.Io.Reader, comment_characters: []const u8) Parser {
     return Parser{
         .allocator = allocator,
-        .line_buffer = std.array_list.Managed(u8).init(allocator),
+        .line_buffer = .empty,
         .reader = reader,
         .comment_characters = comment_characters,
     };

@@ -10,6 +10,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    const ini_c_header = b.addTranslateC(.{
+        .root_source_file = b.path("src/ini.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const lib = b.addLibrary(.{
         .name = "ini",
         .root_module = b.createModule(.{
@@ -17,6 +23,12 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
+            .imports = &.{
+                .{
+                    .name = "c",
+                    .module = ini_c_header.createModule(),
+                },
+            },
         }),
     });
     lib.bundle_compiler_rt = true;
@@ -74,6 +86,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .target = target,
             .link_libc = true,
+            .imports = &.{
+                .{
+                    .name = "c",
+                    .module = ini_c_header.createModule(),
+                },
+            },
         }),
     });
     binding_tests.root_module.addIncludePath(b.path("src"));

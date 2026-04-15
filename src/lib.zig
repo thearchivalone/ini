@@ -1,9 +1,6 @@
 const std = @import("std");
 const ini = @import("ini.zig");
-
-const c = @cImport({
-    @cInclude("ini.h");
-});
+const c = @import("c");
 
 const Record = extern struct {
     type: Type,

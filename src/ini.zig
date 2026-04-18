@@ -48,31 +48,30 @@ pub const Parser = struct {
     }
 
     pub fn next(self: *Self) !?Record {
-        self.line_buffer.clearRetainingCapacity();
-        while (true) {
-            {
-                var list_writer = std.Io.Writer.Allocating.fromArrayList(self.allocator, &self.line_buffer);
-                defer self.line_buffer = list_writer.toArrayList();
+        var line_writer = std.Io.Writer.Allocating.fromArrayList(self.allocator, &self.line_buffer);
+        defer self.line_buffer = line_writer.toArrayList();
 
-                _ = try self.reader.streamDelimiterLimit(&list_writer.writer, '\n', .limited(4096));
-                try list_writer.writer.flush();
-            }
+        line_writer.clearRetainingCapacity();
+        while (true) {
+            _ = try self.reader.streamDelimiterLimit(&line_writer.writer, '\n', .limited(4096));
+
+            var line: []const u8 = line_writer.written();
 
             const discarded = self.reader.discard(.limited(1)) catch |e| blk: {
                 switch (e) {
                     error.EndOfStream => {
-                        if (self.line_buffer.items.len == 0)
+                        if (line.len == 0)
                             return null;
                         break :blk 0;
                     },
                     else => return e,
                 }
             };
-            if (self.line_buffer.items.len == 0 and discarded == 0)
+            if (line.len == 0 and discarded == 0)
                 return null;
-            try self.line_buffer.append(self.allocator, 0); // append guaranteed space for sentinel
+            try line_writer.writer.writeByte(0); // append guaranteed space for sentinel
+            line = line_writer.written();
 
-            var line: []const u8 = self.line_buffer.items;
             var last_index: usize = 0;
 
             // handle comments and escaping
@@ -84,8 +83,9 @@ pub const Parser = struct {
                         const previous_char = line[previous_index];
 
                         if (previous_char == '\\') {
-                            _ = self.line_buffer.orderedRemove(previous_index);
-                            line = self.line_buffer.items;
+                            var buf = line_writer.written();
+                            @memmove(buf[previous_index .. buf.len - 1], buf[index..buf.len]);
+                            line_writer.shrinkRetainingCapacity(buf.len - 1);
 
                             last_index = index + 1;
                             continue;
@@ -101,7 +101,7 @@ pub const Parser = struct {
             }
 
             if (line.len == 0) {
-                self.line_buffer.clearRetainingCapacity();
+                line_writer.clearRetainingCapacity();
                 continue;
             }
 

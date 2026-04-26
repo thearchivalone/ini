@@ -37,39 +37,37 @@ fn insertNulTerminator(slice: []const u8) [:0]const u8 {
 pub const Parser = struct {
     const Self = @This();
 
-    allocator: std.mem.Allocator,
-    line_buffer: std.array_list.Managed(u8),
-    reader: *std.io.Reader,
+    line_writer: std.Io.Writer.Allocating,
+    reader: *std.Io.Reader,
     comment_characters: []const u8,
 
     pub fn deinit(self: *Self) void {
-        self.line_buffer.deinit();
+        self.line_writer.deinit();
         self.* = undefined;
     }
 
     pub fn next(self: *Self) !?Record {
-        var write_buffer: [1024]u8 = undefined;
-        var old_writer_adapter = self.line_buffer.writer().adaptToNewApi(&write_buffer);
-        var writer = &old_writer_adapter.new_interface;
-        self.line_buffer.clearRetainingCapacity();
+        self.line_writer.clearRetainingCapacity();
         while (true) {
-            _ = try self.reader.streamDelimiterLimit(writer, '\n', .limited(4096));
-            try writer.flush();
+            _ = try self.reader.streamDelimiterLimit(&self.line_writer.writer, '\n', .limited(4096));
+
+            var line: []const u8 = self.line_writer.written();
+
             const discarded = self.reader.discard(.limited(1)) catch |e| blk: {
                 switch (e) {
                     error.EndOfStream => {
-                        if (self.line_buffer.items.len == 0)
+                        if (line.len == 0)
                             return null;
                         break :blk 0;
                     },
                     else => return e,
                 }
             };
-            if (self.line_buffer.items.len == 0 and discarded == 0)
+            if (line.len == 0 and discarded == 0)
                 return null;
-            try self.line_buffer.append(0); // append guaranteed space for sentinel
+            try self.line_writer.writer.writeByte(0); // append guaranteed space for sentinel
+            line = self.line_writer.written();
 
-            var line: []const u8 = self.line_buffer.items;
             var last_index: usize = 0;
 
             // handle comments and escaping
@@ -81,8 +79,9 @@ pub const Parser = struct {
                         const previous_char = line[previous_index];
 
                         if (previous_char == '\\') {
-                            _ = self.line_buffer.orderedRemove(previous_index);
-                            line = self.line_buffer.items;
+                            var buf = self.line_writer.written();
+                            @memmove(buf[previous_index .. buf.len - 1], buf[index..buf.len]);
+                            self.line_writer.shrinkRetainingCapacity(buf.len - 1);
 
                             last_index = index + 1;
                             continue;
@@ -98,7 +97,7 @@ pub const Parser = struct {
             }
 
             if (line.len == 0) {
-                self.line_buffer.clearRetainingCapacity();
+                self.line_writer.clearRetainingCapacity();
                 continue;
             }
 
@@ -122,10 +121,9 @@ pub const Parser = struct {
 };
 
 /// Returns a new parser that can read the ini structure
-pub fn parse(allocator: std.mem.Allocator, reader: *std.io.Reader, comment_characters: []const u8) Parser {
+pub fn parse(allocator: std.mem.Allocator, reader: *std.Io.Reader, comment_characters: []const u8) Parser {
     return Parser{
-        .allocator = allocator,
-        .line_buffer = std.array_list.Managed(u8).init(allocator),
+        .line_writer = std.Io.Writer.Allocating.init(allocator),
         .reader = reader,
         .comment_characters = comment_characters,
     };

@@ -1,8 +1,5 @@
 const std = @import("std");
-
-const c = @cImport({
-    @cInclude("ini.h");
-});
+const c = @import("c");
 
 test "parser create/destroy" {
     var buffer: c.ini_Parser = undefined;

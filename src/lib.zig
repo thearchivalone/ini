@@ -1,9 +1,6 @@
 const std = @import("std");
 const ini = @import("ini.zig");
-
-const c = @cImport({
-    @cInclude("ini.h");
-});
+const c = @import("c");
 
 const Record = extern struct {
     type: Type,
@@ -29,12 +26,12 @@ const Record = extern struct {
 };
 
 const BufferParser = struct {
-    stream: std.io.Reader,
+    stream: std.Io.Reader,
     parser: ini.Parser,
 };
 
 const FileParser = struct {
-    old_reader_adapter: CReader.Adapter,
+    reader: CReader,
     parser: ini.Parser,
 };
 
@@ -70,7 +67,7 @@ comptime {
 export fn ini_create_buffer(parser: *IniParser, data: [*]const u8, data_length: usize, comment_characters: [*]const u8, comment_characters_length: usize) void {
     parser.* = IniParser{
         .buffer = .{
-            .stream = std.io.Reader.fixed(data[0..data_length]),
+            .stream = std.Io.Reader.fixed(data[0..data_length]),
             .parser = undefined,
         },
     };
@@ -81,12 +78,12 @@ export fn ini_create_buffer(parser: *IniParser, data: [*]const u8, data_length: 
 export fn ini_create_file(parser: *IniParser, read_buffer: [*]u8, read_buffer_length: usize, file: *std.c.FILE, comment_characters: [*]const u8, comment_characters_length: usize) void {
     parser.* = IniParser{
         .file = .{
-            .old_reader_adapter = cReader(file).adaptToNewApi(read_buffer[0..read_buffer_length]),
+            .reader = CReader.init(file, read_buffer[0..read_buffer_length]),
             .parser = undefined,
         },
     };
 
-    parser.file.parser = ini.parse(std.heap.c_allocator, &parser.file.old_reader_adapter.new_interface, comment_characters[0..comment_characters_length]);
+    parser.file.parser = ini.parse(std.heap.c_allocator, &parser.file.reader.interface, comment_characters[0..comment_characters_length]);
 }
 
 export fn ini_destroy(parser: *IniParser) void {
@@ -97,7 +94,7 @@ export fn ini_destroy(parser: *IniParser) void {
     parser.* = undefined;
 }
 
-const ParseError = error{ OutOfMemory, StreamTooLong } || std.io.Reader.Error || std.io.Writer.Error;
+const ParseError = error{ OutOfMemory, StreamTooLong } || std.Io.Reader.Error || std.Io.Writer.Error;
 
 fn mapError(err: ParseError) IniError {
     return switch (err) {
@@ -141,28 +138,37 @@ export fn ini_next(parser: *IniParser, record: *Record) IniError {
     return .success;
 }
 
-const CReader = std.Io.GenericReader(*std.c.FILE, std.fs.File.ReadError, cReaderRead);
+extern "c" fn feof(stream: *std.c.FILE) c_int;
 
-fn cReader(c_file: *std.c.FILE) CReader {
-    return .{ .context = c_file };
-}
+const CReader = struct {
+    file: *std.c.FILE,
+    interface: std.Io.Reader,
 
-fn cReaderRead(c_file: *std.c.FILE, bytes: []u8) std.fs.File.ReadError!usize {
-    const amt_read = std.c.fread(bytes.ptr, 1, bytes.len, c_file);
-    if (amt_read >= 0) return amt_read;
-    switch (@as(std.os.E, @enumFromInt(std.c._errno().*))) {
-        .SUCCESS => unreachable,
-        .INVAL => unreachable,
-        .FAULT => unreachable,
-        .AGAIN => unreachable, // this is a blocking API
-        .BADF => unreachable, // always a race condition
-        .DESTADDRREQ => unreachable, // connect was never called
-        .DQUOT => return error.DiskQuota,
-        .FBIG => return error.FileTooBig,
-        .IO => return error.InputOutput,
-        .NOSPC => return error.NoSpaceLeft,
-        .PERM => return error.AccessDenied,
-        .PIPE => return error.BrokenPipe,
-        else => |err| return std.os.unexpectedErrno(err),
+    fn init(file: *std.c.FILE, buffer: []u8) CReader {
+        return .{
+            .file = file,
+            .interface = .{
+                .vtable = &.{ .stream = stream },
+                .buffer = buffer,
+                .seek = 0,
+                .end = 0,
+            },
+        };
     }
-}
+
+    fn stream(r: *std.Io.Reader, w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
+        const creader: *CReader = @alignCast(@fieldParentPtr("interface", r));
+
+        if (limit == .nothing) return 0;
+        const dest = limit.slice(try w.writableSliceGreedy(1));
+
+        const n = std.c.fread(dest.ptr, 1, dest.len, creader.file);
+        if (n > 0) {
+            w.advance(n);
+            return n;
+        }
+
+        if (feof(creader.file) != 0) return error.EndOfStream;
+        return error.ReadFailed;
+    }
+};

@@ -1,21 +1,19 @@
 const std = @import("std");
 const ini = @import("ini");
 
-pub fn main() !void {
-    const file = try std.fs.cwd().openFile("example.ini", .{});
-    defer file.close();
-
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (gpa.deinit() != .ok) @panic("memory leaked");
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    const file = try std.Io.Dir.cwd().openFile(io, "example.ini", .{});
+    defer file.close(io);
 
     var read_buffer: [1024]u8 = undefined;
-    var file_reader = file.reader(&read_buffer);
-    var parser = ini.parse(gpa.allocator(), &file_reader.interface, ";#");
+    var file_reader = file.reader(io, &read_buffer);
+    var parser = ini.parse(init.gpa, &file_reader.interface, ";#");
     defer parser.deinit();
 
     var write_buffer: [1024]u8 = undefined;
-    var file_writer = std.fs.File.stdout().writer(&write_buffer);
-    var writer = &file_writer.interface;
+    var file_writer = std.Io.File.stdout().writer(io, &write_buffer);
+    const writer = &file_writer.interface;
     defer writer.flush() catch @panic("Could not flush to stdout");
 
     while (try parser.next()) |record| {

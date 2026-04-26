@@ -22,7 +22,7 @@ fn expectEnumeration(enumeration: []const u8, record: ?Record) !void {
 }
 
 test "empty file" {
-    var stream = std.io.Reader.fixed("");
+    var stream = std.Io.Reader.fixed("");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -33,7 +33,7 @@ test "empty file" {
 }
 
 test "section" {
-    var stream = std.io.Reader.fixed("[Hello]");
+    var stream = std.Io.Reader.fixed("[Hello]");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -60,7 +60,7 @@ test "key-value-pair" {
         "key  =  value  ",
         "  key  =  value  ",
     }) |pattern| {
-        var stream = std.io.Reader.fixed(pattern);
+        var stream = std.Io.Reader.fixed(pattern);
         var parser = parse(std.testing.allocator, &stream, ";#");
         defer parser.deinit();
 
@@ -70,7 +70,7 @@ test "key-value-pair" {
 }
 
 test "enumeration" {
-    var stream = std.io.Reader.fixed("enum");
+    var stream = std.Io.Reader.fixed("enum");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -79,7 +79,7 @@ test "enumeration" {
 }
 
 test "empty line skipping" {
-    var stream = std.io.Reader.fixed("item a\r\n\r\n\r\nitem b");
+    var stream = std.Io.Reader.fixed("item a\r\n\r\n\r\nitem b");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -89,7 +89,7 @@ test "empty line skipping" {
 }
 
 test "multiple sections" {
-    var stream = std.io.Reader.fixed("  [Hello] \r\n[Foo Bar]\n[Hello!]\n");
+    var stream = std.Io.Reader.fixed("  [Hello] \r\n[Foo Bar]\n[Hello!]\n");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -100,7 +100,7 @@ test "multiple sections" {
 }
 
 test "multiple properties" {
-    var stream = std.io.Reader.fixed("a = b\r\nc =\r\nkey value = core property");
+    var stream = std.Io.Reader.fixed("a = b\r\nc =\r\nkey value = core property");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -111,7 +111,7 @@ test "multiple properties" {
 }
 
 test "multiple enumeration" {
-    var stream = std.io.Reader.fixed(" a  \n b  \r\n c  ");
+    var stream = std.Io.Reader.fixed(" a  \n b  \r\n c  ");
     var parser = parse(std.testing.allocator, &stream, ";#");
     defer parser.deinit();
 
@@ -122,7 +122,7 @@ test "multiple enumeration" {
 }
 
 test "mixed data" {
-    var stream = std.io.Reader.fixed(
+    var stream = std.Io.Reader.fixed(
         \\[Meta]
         \\author = xq
         \\library = ini
@@ -151,7 +151,7 @@ test "mixed data" {
 }
 
 test "# comments" {
-    var stream = std.io.Reader.fixed(
+    var stream = std.Io.Reader.fixed(
         \\[section] # comment
         \\key = value # comment
         \\enum # comment
@@ -167,7 +167,7 @@ test "# comments" {
 }
 
 test "; comments" {
-    var stream = std.io.Reader.fixed(
+    var stream = std.Io.Reader.fixed(
         \\[section] ; comment
         \\key = value ; comment
         \\enum ; comment
@@ -183,7 +183,7 @@ test "; comments" {
 }
 
 test "comment escaping" {
-    var stream = std.io.Reader.fixed(
+    var stream = std.Io.Reader.fixed(
         \\# This comment should be ignored
         \\#
         \\# Amazing!
@@ -204,7 +204,7 @@ test "comment escaping" {
 }
 
 test "comment character selection" {
-    var stream = std.io.Reader.fixed(
+    var stream = std.Io.Reader.fixed(
         \\# This is a comment
         \\? But this is also one!
         \\just_a_key = value

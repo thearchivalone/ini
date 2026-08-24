@@ -10,5 +10,8 @@
         "build.zig.zon",
         "src/ini.zig",
         "src/ini.h",
+        "src/lib.zig",
+        "src/lib-test.zig",
+        "src/test.zig"
     },
 }

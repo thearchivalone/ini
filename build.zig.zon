@@ -9,5 +9,6 @@
         "build.zig",
         "build.zig.zon",
         "src/ini.zig",
+        "src/ini.h",
     },
 }
